@@ -27,3 +27,24 @@ export const isAuthPublicPath = (pathname: string) => {
 };
 
 export const shouldProtectPath = (pathname: string) => !isAuthPublicPath(pathname);
+
+// User roles
+export const USER_ROLES = {
+  LEARNER: 'learner',
+  INSTRUCTOR: 'instructor',
+  OPERATOR: 'operator',
+} as const;
+
+export type UserRole = (typeof USER_ROLES)[keyof typeof USER_ROLES];
+
+export const ROLE_LABELS: Record<UserRole, string> = {
+  [USER_ROLES.LEARNER]: '학습자',
+  [USER_ROLES.INSTRUCTOR]: '강사',
+  [USER_ROLES.OPERATOR]: '운영자',
+};
+
+export const ROLE_REDIRECT_PATHS: Record<UserRole, string> = {
+  [USER_ROLES.LEARNER]: '/courses',
+  [USER_ROLES.INSTRUCTOR]: '/instructor/dashboard',
+  [USER_ROLES.OPERATOR]: '/operator/dashboard',
+};

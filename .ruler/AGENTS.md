@@ -32,7 +32,7 @@ use following libraries for specific functionalities:
 
 - src
 - src/app: Next.js App Routers
-- src/app/api/[[...hono]]: Hono entrypoint delegated to Next.js Route Handler (`handle(createHonoApp())`)
+- src/app/api/[...route]: Hono entrypoint delegated to Next.js Route Handler (직접 `app.fetch()` 호출)
 - src/backend/hono: Hono 앱 본체 (`app.ts`, `context.ts`)
 - src/backend/middleware: 공통 미들웨어 (에러, 컨텍스트, Supabase 등)
 - src/backend/http: 응답 포맷, 핸들러 결과 유틸 등 공통 HTTP 레이어
@@ -42,10 +42,10 @@ use following libraries for specific functionalities:
 - src/constants: Common constants
 - src/hooks: Common hooks
 - src/lib: utility functions
-- src/remote: http client
+- src/lib/remote: http client (axios 기반, NEXT_PUBLIC_API_BASE_URL 사용)
 - src/features/[featureName]/components/\*: Components for specific feature
 - src/features/[featureName]/constants/\*
-- src/features/[featureName]/hooks/\*
+- src/features/[featureName]/hooks/\*: React Query 훅 (useTerms 등)
 - src/features/[featureName]/backend/route.ts: Hono 라우터 정의
 - src/features/[featureName]/backend/service.ts: Supabase/비즈니스 로직
 - src/features/[featureName]/backend/error.ts: 상황별 error code 정의
@@ -55,12 +55,24 @@ use following libraries for specific functionalities:
 
 ## Backend Layer (Hono + Next.js)
 
-- Next.js `app` 라우터에서 `src/app/api/[[...hono]]/route.ts` 를 통해 Hono 앱을 위임한다. 모든 HTTP 메서드는 `handle(createHonoApp())` 로 노출하며 `runtime = 'nodejs'` 로 Supabase service-role 키를 사용한다.
-- `src/backend/hono/app.ts` 의 `createHonoApp` 은 싱글턴으로 관리하며 다음 빌딩블록을 순서대로 연결한다.
-  1. `errorBoundary()` – 공통 에러 로깅 및 5xx 응답 정규화.
-  2. `withAppContext()` – `zod` 기반 환경 변수 파싱, 콘솔 기반 logger, 설정을 `c.set` 으로 주입.
-  3. `withSupabase()` – service-role 키로 생성한 Supabase 서버 클라이언트를 per-request로 주입.
-  4. `registerExampleRoutes(app)` 등 기능별 라우터 등록 (모든 라우터는 `src/features/[feature]/backend/route.ts` 에서 정의).
+- **API 라우트 설정**: `src/app/api/[...route]/route.ts` 에서 Hono 앱을 Next.js와 통합
+  - `[...route]` catch-all 라우트 사용 (선택적 catch-all `[[...route]]`는 사용하지 않음)
+  - `hono/vercel` 어댑터 대신 직접 `app.fetch(req)` 호출
+  - `runtime = 'nodejs'` 설정으로 Supabase service-role 키 사용
+
+- **Hono 앱 설정**: `src/backend/hono/app.ts` 의 `createHonoApp`
+  - 싱글턴 패턴으로 관리
+  - **중요**: `new Hono({ strict: false }).basePath('/api')` 로 basePath 설정 필수
+  - 빌딩블록 순서:
+    1. `errorBoundary()` – 공통 에러 로깅 및 5xx 응답 정규화
+    2. `withAppContext()` – `zod` 기반 환경 변수 파싱, 콘솔 기반 logger 주입
+    3. `withSupabase()` – service-role 키로 생성한 Supabase 서버 클라이언트 per-request 주입
+    4. `registerExampleRoutes(app)` 등 기능별 라우터 등록
+
+- **환경변수 설정**: `.env.local`에 `NEXT_PUBLIC_API_BASE_URL=/api` 필수
+  - 프론트엔드 axios 클라이언트가 `/api` prefix를 사용하도록 설정
+  - 이 설정이 없으면 클라이언트가 `/auth/terms` 대신 `/api/auth/terms`로 요청 불가
+
 - `src/backend/hono/context.ts` 의 `AppEnv` 는 `c.get`/`c.var` 로 접근 가능한 `supabase`, `logger`, `config` 키를 제공한다. 절대 `c.env` 를 직접 수정하지 않는다.
 - 공통 HTTP 응답 헬퍼는 `src/backend/http/response.ts`에서 제공하며, 모든 라우터/서비스는 `success`/`failure`/`respond` 패턴을 사용한다.
 - 기능별 백엔드 로직은 `src/features/[feature]/backend/service.ts`(Supabase 접근), `schema.ts`(요청/응답 zod 정의), `route.ts`(Hono 라우터)로 분리한다.
@@ -203,3 +215,55 @@ You are a senior full-stack developer, one of those rare 10x devs. Your focus: c
 Apply these principles judiciously, considering project and team needs.
 
 `example` page, table is just example.
+
+## Common Troubleshooting
+
+### Hono + Next.js API 라우트 404 오류
+
+**증상**: `/api/auth/terms` 등 API 엔드포인트가 404 오류 반환
+
+**원인 및 해결방법**:
+
+1. **환경변수 누락**
+   - 문제: `NEXT_PUBLIC_API_BASE_URL` 미설정
+   - 해결: `.env.local`에 `NEXT_PUBLIC_API_BASE_URL=/api` 추가
+
+2. **API 라우트 경로 문제**
+   - 문제: `[[...hono]]` 선택적 catch-all 라우트가 Next.js에서 제대로 작동하지 않음
+   - 해결: `[...route]` 일반 catch-all 라우트 사용
+
+3. **Hono 어댑터 문제**
+   - 문제: `hono/vercel` 어댑터가 Next.js App Router와 호환되지 않음
+   - 해결: 직접 `app.fetch(req)` 호출
+   ```typescript
+   // ❌ 잘못된 방법
+   import { handle } from 'hono/vercel';
+   export const GET = handle(app);
+
+   // ✅ 올바른 방법
+   const handler = (req: Request) => app.fetch(req);
+   export { handler as GET, handler as POST, ... };
+   ```
+
+4. **Hono basePath 누락**
+   - 문제: Hono 라우트가 `/auth/terms`로 등록되었지만 Next.js는 `/api/auth/terms`로 요청
+   - 해결: Hono 앱 생성 시 `basePath('/api')` 설정
+   ```typescript
+   const app = new Hono<AppEnv>({ strict: false }).basePath('/api');
+   ```
+
+5. **빌드 캐시 문제**
+   - 문제: 파일 변경 후에도 이전 코드가 실행됨
+   - 해결: `.next` 디렉토리 삭제 후 재시작
+   ```bash
+   rm -rf .next
+   npm run dev
+   ```
+
+**완전한 설정 체크리스트**:
+- [ ] `.env.local`에 `NEXT_PUBLIC_API_BASE_URL=/api` 존재
+- [ ] `src/app/api/[...route]/route.ts` 존재 (선택적 catch-all 아님)
+- [ ] Hono 앱에서 `basePath('/api')` 설정
+- [ ] `hono/vercel` 대신 `app.fetch()` 직접 호출
+- [ ] 개발 서버 재시작 완료
+- [ ] Supabase 마이그레이션 적용 완료 (데이터베이스 테이블 생성)

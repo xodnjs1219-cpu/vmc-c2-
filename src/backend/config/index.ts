@@ -13,6 +13,24 @@ export const getAppConfig = (): AppConfig => {
     return cachedConfig;
   }
 
+  // Allow build-time execution without throwing
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    // Return a placeholder config during build time
+    if (process.env.NODE_ENV === 'production' && !process.env.VERCEL) {
+      // Only throw in production runtime (not build time)
+      throw new Error(
+        'Invalid backend configuration: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required',
+      );
+    }
+    // Return placeholder for build time
+    return {
+      supabase: {
+        url: 'https://placeholder.supabase.co',
+        serviceRoleKey: 'placeholder',
+      },
+    };
+  }
+
   const parsed = envSchema.safeParse({
     SUPABASE_URL: process.env.SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
