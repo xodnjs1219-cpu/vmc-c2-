@@ -356,6 +356,92 @@ export async function resubmitAssignment(
   return success(response);
 }
 
+/**
+ * Get Course Assignments for Learner
+ */
+export async function getLearnerCourseAssignments(
+  client: SupabaseClient,
+  userId: string,
+  courseId: string,
+): Promise<Result<import('./schema').LearnerAssignmentListResponse, string>> {
+  // 1. Check enrollment
+  const { data: enrollment, error: enrollmentError } = await client
+    .from('enrollments')
+    .select('id')
+    .eq('learner_id', userId)
+    .eq('course_id', courseId)
+    .single();
+
+  if (enrollmentError || !enrollment) {
+    return failure(
+      assignmentErrorCodes.notEnrolled,
+      '수강 중인 코스의 과제만 열람할 수 있습니다',
+    );
+  }
+
+  // 2. Get published assignments
+  const { data: assignments, error: assignmentsError } = await client
+    .from('assignments')
+    .select('*')
+    .eq('course_id', courseId)
+    .eq('status', 'published')
+    .order('due_date', { ascending: true });
+
+  if (assignmentsError) {
+    return failure(assignmentErrorCodes.databaseError, '과제 목록 조회에 실패했습니다');
+  }
+
+  if (!assignments || assignments.length === 0) {
+    return success({ assignments: [], total: 0 });
+  }
+
+  // 3. Get user's submissions for these assignments
+  const assignmentIds = assignments.map((a) => a.id);
+  const { data: submissions } = await client
+    .from('submissions')
+    .select('assignment_id, status, score')
+    .eq('learner_id', userId)
+    .in('assignment_id', assignmentIds);
+
+  const submissionMap = new Map<
+    string,
+    { status: 'submitted' | 'graded' | 'resubmission_required'; score: number | null }
+  >();
+  submissions?.forEach((s) => {
+    submissionMap.set(s.assignment_id, {
+      status: s.status as 'submitted' | 'graded' | 'resubmission_required',
+      score: s.score,
+    });
+  });
+
+  // 4. Transform data
+  const now = new Date();
+  const assignmentList = assignments.map((assignment) => {
+    const dueDate = new Date(assignment.due_date);
+    const isLate = now > dueDate;
+    const submission = submissionMap.get(assignment.id);
+
+    return {
+      id: assignment.id,
+      title: assignment.title,
+      dueDate: assignment.due_date,
+      weight: assignment.weight,
+      status: assignment.status as 'draft' | 'published' | 'closed',
+      allowLate: assignment.allow_late,
+      isLate,
+      hasSubmitted: !!submission,
+      submissionStatus: submission?.status || null,
+      score: submission?.score || null,
+      createdAt: assignment.created_at,
+    };
+  });
+
+  return success({
+    assignments: assignmentList,
+    total: assignmentList.length,
+  });
+}
+
 // ========================================
 // Instructor Functions
 // ========================================
@@ -367,7 +453,140 @@ import type {
   UpdateAssignmentStatusRequest,
   SubmissionFilterQuery,
   SubmissionListResponse,
+  AssignmentListResponse,
+  InstructorAssignmentDetail,
 } from './schema';
+
+/**
+ * Get Assignment Detail (Instructor)
+ */
+export async function getInstructorAssignmentDetail(
+  client: SupabaseClient,
+  instructorId: string,
+  assignmentId: string,
+): Promise<Result<InstructorAssignmentDetail, string>> {
+  // 1. Check ownership and get assignment
+  const { data: assignment, error: assignmentError } = await client
+    .from('assignments')
+    .select('*, courses!inner(instructor_id, id)')
+    .eq('id', assignmentId)
+    .single();
+
+  if (assignmentError || !assignment) {
+    return failure(assignmentErrorCodes.assignmentNotFound, '과제를 찾을 수 없습니다');
+  }
+
+  const instructorIdFromCourse = (assignment.courses as any).instructor_id;
+  if (instructorIdFromCourse !== instructorId) {
+    return failure(assignmentErrorCodes.unauthorized, '권한이 없습니다');
+  }
+
+  const courseId = (assignment.courses as any).id;
+
+  // 2. Get submission count
+  const { count: submissionCount } = await client
+    .from('submissions')
+    .select('*', { count: 'exact', head: true })
+    .eq('assignment_id', assignmentId);
+
+  // 3. Get total enrolled students count
+  const { count: totalStudents } = await client
+    .from('enrollments')
+    .select('*', { count: 'exact', head: true })
+    .eq('course_id', courseId);
+
+  // 4. Transform data
+  const detail: InstructorAssignmentDetail = {
+    id: assignment.id,
+    title: assignment.title,
+    description: assignment.description,
+    dueDate: assignment.due_date,
+    weight: assignment.weight,
+    allowLate: assignment.allow_late,
+    allowResubmission: assignment.allow_resubmission,
+    status: assignment.status as 'draft' | 'published' | 'closed',
+    submissionCount: submissionCount || 0,
+    totalStudents: totalStudents || 0,
+    createdAt: assignment.created_at,
+    updatedAt: assignment.updated_at,
+  };
+
+  return success(detail);
+}
+
+/**
+ * Get Course Assignments (Instructor)
+ */
+export async function getCourseAssignments(
+  client: SupabaseClient,
+  instructorId: string,
+  courseId: string,
+): Promise<Result<AssignmentListResponse, string>> {
+  // 1. Check course ownership
+  const { data: course, error: courseError } = await client
+    .from('courses')
+    .select('instructor_id')
+    .eq('id', courseId)
+    .single();
+
+  if (courseError || !course) {
+    return failure(assignmentErrorCodes.courseNotFound, '코스를 찾을 수 없습니다');
+  }
+
+  if (course.instructor_id !== instructorId) {
+    return failure(assignmentErrorCodes.unauthorized, '권한이 없습니다');
+  }
+
+  // 2. Get assignments
+  const { data: assignments, error: assignmentsError } = await client
+    .from('assignments')
+    .select('*')
+    .eq('course_id', courseId)
+    .order('due_date', { ascending: false });
+
+  if (assignmentsError) {
+    return failure(assignmentErrorCodes.databaseError, '과제 목록 조회에 실패했습니다');
+  }
+
+  if (!assignments || assignments.length === 0) {
+    return success({ assignments: [], total: 0 });
+  }
+
+  // 3. Get submission counts for each assignment
+  const assignmentIds = assignments.map((a) => a.id);
+  const { data: submissions } = await client
+    .from('submissions')
+    .select('assignment_id')
+    .in('assignment_id', assignmentIds);
+
+  const submissionCountMap = new Map<string, number>();
+  submissions?.forEach((s) => {
+    submissionCountMap.set(s.assignment_id, (submissionCountMap.get(s.assignment_id) || 0) + 1);
+  });
+
+  // 4. Get total enrolled students count
+  const { count: totalStudents } = await client
+    .from('enrollments')
+    .select('*', { count: 'exact', head: true })
+    .eq('course_id', courseId);
+
+  // 5. Transform data
+  const assignmentList = assignments.map((assignment) => ({
+    id: assignment.id,
+    title: assignment.title,
+    dueDate: assignment.due_date,
+    weight: assignment.weight,
+    status: assignment.status as 'draft' | 'published' | 'closed',
+    submissionCount: submissionCountMap.get(assignment.id) || 0,
+    totalStudents: totalStudents || 0,
+    createdAt: assignment.created_at,
+  }));
+
+  return success({
+    assignments: assignmentList,
+    total: assignmentList.length,
+  });
+}
 
 /**
  * Create Assignment (Instructor)
@@ -564,18 +783,7 @@ export async function getAssignmentSubmissions(
   // 2. Build query with filter
   let submissionsQuery = client
     .from('submissions')
-    .select(
-      `
-      id,
-      assignment_id,
-      learner_id,
-      status,
-      is_late,
-      submitted_at,
-      score,
-      profiles!inner(name)
-    `,
-    )
+    .select('id, assignment_id, learner_id, status, is_late, submitted_at, score')
     .eq('assignment_id', assignmentId);
 
   // Apply filter
@@ -596,17 +804,29 @@ export async function getAssignmentSubmissions(
     return failure(submissionErrorCodes.databaseError, '제출물 조회에 실패했습니다');
   }
 
-  // 3. Transform data
-  const submissionList = submissions.map((s: any) => ({
+  // 3. Get learner names
+  const learnerIds = [...new Set(submissions?.map((s) => s.learner_id) || [])];
+  const { data: profiles } = await client
+    .from('profiles')
+    .select('id, name')
+    .in('id', learnerIds);
+
+  const profileMap = new Map<string, string>();
+  profiles?.forEach((p: any) => {
+    profileMap.set(p.id, p.name);
+  });
+
+  // 4. Transform data
+  const submissionList = submissions?.map((s: any) => ({
     id: s.id,
     assignmentId: s.assignment_id,
     learnerId: s.learner_id,
-    learnerName: s.profiles.name,
+    learnerName: profileMap.get(s.learner_id) ?? '알 수 없음',
     status: s.status,
     isLate: s.is_late,
     submittedAt: s.submitted_at,
     score: s.score,
-  }));
+  })) || [];
 
   return success({
     submissions: submissionList,

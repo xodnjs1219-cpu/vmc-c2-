@@ -232,7 +232,7 @@ export const InstructorDashboardView = () => {
                 {recentSubmissions.map((submission) => (
                   <Link
                     key={submission.id}
-                    href={`/assignments/${submission.assignmentId}/submissions`}
+                    href={`/courses/${submission.courseId}/assignments/${submission.assignmentId}`}
                   >
                     <div className="p-4 hover:bg-muted/50 transition-colors cursor-pointer">
                       <div className="flex items-start justify-between">

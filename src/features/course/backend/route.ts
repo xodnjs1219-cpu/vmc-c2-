@@ -18,6 +18,57 @@ import { courseErrorCodes } from './error';
 import { isFailure } from '@/backend/http/result';
 
 export function registerCourseRoutes(app: Hono<AppEnv>) {
+  // GET /courses/metadata - 코스 메타데이터 조회 (카테고리, 난이도)
+  app.get('/courses/metadata', async (c) => {
+    const supabase = c.get('supabase');
+
+    // Get categories
+    const { data: categories, error: categoriesError } = await supabase
+      .from('categories')
+      .select('id, name')
+      .eq('is_active', true)
+      .order('name');
+
+    if (categoriesError) {
+      return c.json(
+        {
+          error: {
+            code: courseErrorCodes.fetchFailed,
+            message: '카테고리 조회에 실패했습니다',
+          },
+        },
+        500
+      );
+    }
+
+    // Get difficulties
+    const { data: difficulties, error: difficultiesError } = await supabase
+      .from('difficulties')
+      .select('id, name')
+      .eq('is_active', true)
+      .order('name');
+
+    if (difficultiesError) {
+      return c.json(
+        {
+          error: {
+            code: courseErrorCodes.fetchFailed,
+            message: '난이도 조회에 실패했습니다',
+          },
+        },
+        500
+      );
+    }
+
+    return c.json({
+      ok: true,
+      data: {
+        categories: categories || [],
+        difficulties: difficulties || [],
+      },
+    });
+  });
+
   // GET /courses - 코스 목록 조회
   app.get('/courses', async (c) => {
     const supabase = c.get('supabase');
@@ -36,8 +87,27 @@ export function registerCourseRoutes(app: Hono<AppEnv>) {
       );
     }
 
+    // Get user ID and role from Authorization header (optional)
+    let userId: string | undefined;
+    let userRole: string | undefined;
+    const authHeader = c.req.header('authorization');
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '');
+      const { data: userData } = await supabase.auth.getUser(token);
+      if (userData?.user) {
+        userId = userData.user.id;
+        // Get user role
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', userId)
+          .single();
+        userRole = profile?.role;
+      }
+    }
+
     const query = parseResult.data;
-    const result = await getCourses(supabase, query);
+    const result = await getCourses(supabase, query, userId, userRole);
 
     if (!isFailure(result)) {
       return c.json(result.data);
@@ -74,11 +144,14 @@ export function registerCourseRoutes(app: Hono<AppEnv>) {
 
     const { id } = parseResult.data;
 
-    // Get user ID from session (optional)
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    const userId = user?.id;
+    // Get user ID from Authorization header (optional)
+    let userId: string | undefined;
+    const authHeader = c.req.header('authorization');
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '');
+      const { data: userData } = await supabase.auth.getUser(token);
+      userId = userData?.user?.id;
+    }
 
     const result = await getCourseById(supabase, id, userId);
 

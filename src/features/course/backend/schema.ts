@@ -78,6 +78,7 @@ export const CourseSchema = z.object({
   }),
   enrollmentCount: z.number().int(),
   isEnrolled: z.boolean().optional(),
+  isInstructor: z.boolean().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

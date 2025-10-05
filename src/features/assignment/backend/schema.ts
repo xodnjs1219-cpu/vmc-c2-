@@ -143,6 +143,39 @@ export const ResubmitAssignmentResponseSchema = z.object({
 export type ResubmitAssignmentResponse = z.infer<typeof ResubmitAssignmentResponseSchema>;
 
 // ========================================
+// Learner Assignment List Schemas
+// ========================================
+
+/**
+ * Learner Assignment List Item Schema
+ */
+export const LearnerAssignmentListItemSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  dueDate: z.string().datetime(),
+  weight: z.number(),
+  status: z.enum(['draft', 'published', 'closed']),
+  allowLate: z.boolean(),
+  isLate: z.boolean(),
+  hasSubmitted: z.boolean(),
+  submissionStatus: z.enum(['submitted', 'graded', 'resubmission_required']).nullable(),
+  score: z.number().nullable(),
+  createdAt: z.string().datetime(),
+});
+
+export type LearnerAssignmentListItem = z.infer<typeof LearnerAssignmentListItemSchema>;
+
+/**
+ * Learner Assignment List Response Schema
+ */
+export const LearnerAssignmentListResponseSchema = z.object({
+  assignments: z.array(LearnerAssignmentListItemSchema),
+  total: z.number().int(),
+});
+
+export type LearnerAssignmentListResponse = z.infer<typeof LearnerAssignmentListResponseSchema>;
+
+// ========================================
 // Instructor Mutation Schemas
 // ========================================
 
@@ -193,6 +226,52 @@ export const CreateAssignmentResponseSchema = z.object({
 });
 
 export type CreateAssignmentResponse = z.infer<typeof CreateAssignmentResponseSchema>;
+
+/**
+ * Assignment List Item Schema (Instructor)
+ */
+export const AssignmentListItemSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  dueDate: z.string().datetime(),
+  weight: z.number(),
+  status: z.enum(['draft', 'published', 'closed']),
+  submissionCount: z.number().int(),
+  totalStudents: z.number().int(),
+  createdAt: z.string().datetime(),
+});
+
+export type AssignmentListItem = z.infer<typeof AssignmentListItemSchema>;
+
+/**
+ * Assignment List Response Schema (Instructor)
+ */
+export const AssignmentListResponseSchema = z.object({
+  assignments: z.array(AssignmentListItemSchema),
+  total: z.number().int(),
+});
+
+export type AssignmentListResponse = z.infer<typeof AssignmentListResponseSchema>;
+
+/**
+ * Instructor Assignment Detail Schema
+ */
+export const InstructorAssignmentDetailSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  description: z.string(),
+  dueDate: z.string().datetime(),
+  weight: z.number(),
+  allowLate: z.boolean(),
+  allowResubmission: z.boolean(),
+  status: z.enum(['draft', 'published', 'closed']),
+  submissionCount: z.number().int(),
+  totalStudents: z.number().int(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export type InstructorAssignmentDetail = z.infer<typeof InstructorAssignmentDetailSchema>;
 
 /**
  * Submission Filter Query Schema (Instructor)

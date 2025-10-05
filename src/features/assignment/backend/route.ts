@@ -16,21 +16,17 @@ import {
  */
 export function registerAssignmentRoutes(app: Hono<AppEnv>) {
   /**
-   * GET /courses/:courseId/assignments/:assignmentId
-   * Get assignment detail for learner
+   * GET /courses/:courseId/assignments
+   * Get assignments list for a course (Learner)
    */
-  app.get('/courses/:courseId/assignments/:assignmentId', async (c) => {
+  app.get('/courses/:courseId/assignments', async (c) => {
     const supabase = c.get('supabase');
 
-    // 세션에서 userId 추출
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
+    // Get current user from Authorization header
+    const authHeader = c.req.header('authorization');
+    if (!authHeader) {
       return c.json(
         {
-          success: false,
           error: {
             code: assignmentErrorCodes.unauthorized,
             message: '인증이 필요합니다',
@@ -39,6 +35,80 @@ export function registerAssignmentRoutes(app: Hono<AppEnv>) {
         401,
       );
     }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: userData, error: userError } = await supabase.auth.getUser(token);
+
+    if (userError || !userData.user) {
+      return c.json(
+        {
+          error: {
+            code: assignmentErrorCodes.unauthorized,
+            message: '유효하지 않은 토큰입니다',
+          },
+        },
+        401,
+      );
+    }
+
+    const userId = userData.user.id;
+    const courseId = c.req.param('courseId');
+
+    const { getLearnerCourseAssignments } = await import('./service');
+    const result = await getLearnerCourseAssignments(supabase, userId, courseId);
+
+    if (isFailure(result)) {
+      return c.json(
+        {
+          error: {
+            code: result.error,
+            message: result.message,
+          },
+        },
+        400,
+      );
+    }
+
+    return c.json(result.data);
+  });
+
+  /**
+   * GET /courses/:courseId/assignments/:assignmentId
+   * Get assignment detail for learner
+   */
+  app.get('/courses/:courseId/assignments/:assignmentId', async (c) => {
+    const supabase = c.get('supabase');
+
+    // Get current user from Authorization header
+    const authHeader = c.req.header('authorization');
+    if (!authHeader) {
+      return c.json(
+        {
+          error: {
+            code: assignmentErrorCodes.unauthorized,
+            message: '인증이 필요합니다',
+          },
+        },
+        401,
+      );
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: userData, error: userError } = await supabase.auth.getUser(token);
+
+    if (userError || !userData.user) {
+      return c.json(
+        {
+          error: {
+            code: assignmentErrorCodes.unauthorized,
+            message: '유효하지 않은 토큰입니다',
+          },
+        },
+        401,
+      );
+    }
+
+    const user = userData.user;
 
     // 파라미터 파싱 및 검증
     const paramsResult = AssignmentDetailParamsSchema.safeParse({
@@ -132,15 +202,11 @@ export function registerAssignmentRoutes(app: Hono<AppEnv>) {
   app.post('/submissions', async (c) => {
     const supabase = c.get('supabase');
 
-    // 인증 확인
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
+    // Get current user from Authorization header
+    const authHeader = c.req.header('authorization');
+    if (!authHeader) {
       return c.json(
         {
-          success: false,
           error: {
             code: submissionErrorCodes.unauthorized,
             message: '인증이 필요합니다',
@@ -149,6 +215,23 @@ export function registerAssignmentRoutes(app: Hono<AppEnv>) {
         401,
       );
     }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: userData, error: userError } = await supabase.auth.getUser(token);
+
+    if (userError || !userData.user) {
+      return c.json(
+        {
+          error: {
+            code: submissionErrorCodes.unauthorized,
+            message: '유효하지 않은 토큰입니다',
+          },
+        },
+        401,
+      );
+    }
+
+    const user = userData.user;
 
     // 요청 바디 파싱 및 검증
     const body = await c.req.json();
@@ -238,15 +321,11 @@ export function registerAssignmentRoutes(app: Hono<AppEnv>) {
   app.put('/submissions/:id', async (c) => {
     const supabase = c.get('supabase');
 
-    // 인증 확인
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
+    // Get current user from Authorization header
+    const authHeader = c.req.header('authorization');
+    if (!authHeader) {
       return c.json(
         {
-          success: false,
           error: {
             code: submissionErrorCodes.unauthorized,
             message: '인증이 필요합니다',
@@ -255,6 +334,23 @@ export function registerAssignmentRoutes(app: Hono<AppEnv>) {
         401,
       );
     }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: userData, error: userError } = await supabase.auth.getUser(token);
+
+    if (userError || !userData.user) {
+      return c.json(
+        {
+          error: {
+            code: submissionErrorCodes.unauthorized,
+            message: '유효하지 않은 토큰입니다',
+          },
+        },
+        401,
+      );
+    }
+
+    const user = userData.user;
 
     // 파라미터 및 바디 파싱
     const submissionId = c.req.param('id');
@@ -348,6 +444,160 @@ export function registerAssignmentRoutes(app: Hono<AppEnv>) {
   // ========================================
   // Instructor Routes
   // ========================================
+
+  /**
+   * GET /instructor/courses/:courseId/assignments
+   * Get assignments list for a course (Instructor only)
+   */
+  app.get('/instructor/courses/:courseId/assignments', async (c) => {
+    const supabase = c.get('supabase');
+
+    // Get current user
+    const authHeader = c.req.header('authorization');
+    if (!authHeader) {
+      return c.json(
+        {
+          error: {
+            code: assignmentErrorCodes.unauthorized,
+            message: '인증이 필요합니다',
+          },
+        },
+        401,
+      );
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: userData, error: userError } = await supabase.auth.getUser(token);
+
+    if (userError || !userData.user) {
+      return c.json(
+        {
+          error: {
+            code: assignmentErrorCodes.unauthorized,
+            message: '유효하지 않은 토큰입니다',
+          },
+        },
+        401,
+      );
+    }
+
+    const userId = userData.user.id;
+
+    // Check instructor role
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', userId)
+      .single();
+
+    if (!profile || profile.role !== 'instructor') {
+      return c.json(
+        {
+          error: {
+            code: assignmentErrorCodes.unauthorized,
+            message: '강사만 과제 목록을 조회할 수 있습니다',
+          },
+        },
+        403,
+      );
+    }
+
+    const courseId = c.req.param('courseId');
+
+    const { getCourseAssignments } = await import('./service');
+    const result = await getCourseAssignments(supabase, userId, courseId);
+
+    if (isFailure(result)) {
+      return c.json(
+        {
+          error: {
+            code: result.error,
+            message: result.message,
+          },
+        },
+        400,
+      );
+    }
+
+    return c.json(result.data);
+  });
+
+  /**
+   * GET /instructor/assignments/:assignmentId
+   * Get assignment detail (Instructor only)
+   */
+  app.get('/instructor/assignments/:assignmentId', async (c) => {
+    const supabase = c.get('supabase');
+
+    // Get current user
+    const authHeader = c.req.header('authorization');
+    if (!authHeader) {
+      return c.json(
+        {
+          error: {
+            code: assignmentErrorCodes.unauthorized,
+            message: '인증이 필요합니다',
+          },
+        },
+        401,
+      );
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: userData, error: userError } = await supabase.auth.getUser(token);
+
+    if (userError || !userData.user) {
+      return c.json(
+        {
+          error: {
+            code: assignmentErrorCodes.unauthorized,
+            message: '유효하지 않은 토큰입니다',
+          },
+        },
+        401,
+      );
+    }
+
+    const userId = userData.user.id;
+
+    // Check instructor role
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', userId)
+      .single();
+
+    if (!profile || profile.role !== 'instructor') {
+      return c.json(
+        {
+          error: {
+            code: assignmentErrorCodes.unauthorized,
+            message: '강사만 과제 상세를 조회할 수 있습니다',
+          },
+        },
+        403,
+      );
+    }
+
+    const assignmentId = c.req.param('assignmentId');
+
+    const { getInstructorAssignmentDetail } = await import('./service');
+    const result = await getInstructorAssignmentDetail(supabase, userId, assignmentId);
+
+    if (isFailure(result)) {
+      return c.json(
+        {
+          error: {
+            code: result.error,
+            message: result.message,
+          },
+        },
+        result.error === assignmentErrorCodes.assignmentNotFound ? 404 : 400,
+      );
+    }
+
+    return c.json(result.data);
+  });
 
   /**
    * POST /instructor/courses/:courseId/assignments

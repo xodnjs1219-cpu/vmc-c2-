@@ -9,7 +9,37 @@ import type {
   UpdateAssignmentStatusRequest,
   SubmissionFilterQuery,
   SubmissionListResponse,
+  AssignmentListResponse,
 } from '@/features/assignment/lib/dto';
+
+export const useCourseAssignments = (courseId: string, enabled = true) => {
+  return useQuery<AssignmentListResponse>({
+    queryKey: ['instructor', 'course', courseId, 'assignments'],
+    queryFn: async () => {
+      const response = await apiClient.get<AssignmentListResponse>(
+        `/instructor/courses/${courseId}/assignments`,
+      );
+      return response.data;
+    },
+    enabled,
+    staleTime: 1 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+  });
+};
+
+export const useInstructorAssignmentDetail = (assignmentId: string) => {
+  return useQuery<import('@/features/assignment/lib/dto').InstructorAssignmentDetail>({
+    queryKey: ['instructor', 'assignment', assignmentId],
+    queryFn: async () => {
+      const response = await apiClient.get<import('@/features/assignment/lib/dto').InstructorAssignmentDetail>(
+        `/instructor/assignments/${assignmentId}`,
+      );
+      return response.data;
+    },
+    staleTime: 1 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+  });
+};
 
 export const useCreateAssignment = (courseId: string) => {
   const queryClient = useQueryClient();
@@ -25,6 +55,7 @@ export const useCreateAssignment = (courseId: string) => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['instructor', 'dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['course', courseId] });
+      queryClient.invalidateQueries({ queryKey: ['instructor', 'course', courseId, 'assignments'] });
     },
   });
 };
@@ -75,6 +106,7 @@ export const useUpdateAssignmentStatus = () => {
 export const useAssignmentSubmissions = (
   assignmentId: string,
   filter: SubmissionFilterQuery['filter'] = 'all',
+  enabled = true,
 ) => {
   return useQuery<SubmissionListResponse>({
     queryKey: ['instructor', 'assignment', assignmentId, 'submissions', filter],
@@ -85,6 +117,7 @@ export const useAssignmentSubmissions = (
       );
       return response.data;
     },
+    enabled: enabled && !!assignmentId,
     staleTime: 1 * 60 * 1000, // 1분
     gcTime: 5 * 60 * 1000, // 5분
   });

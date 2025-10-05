@@ -370,7 +370,8 @@ export const getInstructorDashboard = async (
         recentSubmissions.push({
           id: s.id,
           assignmentId: s.assignment_id,
-          assignmentTitle: s.assignments.title,
+          assignmentTitle: s.assignments?.title ?? '알 수 없음',
+          courseId: s.assignments?.course_id ?? '',
           learnerName: profileMap.get(s.learner_id) ?? '알 수 없음',
           submittedAt: s.submitted_at,
           status: s.status,

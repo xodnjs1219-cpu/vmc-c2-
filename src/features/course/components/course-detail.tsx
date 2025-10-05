@@ -2,9 +2,12 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import type { Course } from '../lib/dto';
 import { EnrollmentButton } from '@/features/enrollment/components/enrollment-button';
+import { Settings, ClipboardList } from 'lucide-react';
+import Link from 'next/link';
 
 interface CourseDetailProps {
   course: Course;
@@ -55,10 +58,40 @@ export function CourseDetail({ course }: CourseDetailProps) {
 
           <Separator />
 
-          <EnrollmentButton
-            courseId={course.id}
-            isEnrolled={course.isEnrolled || false}
-          />
+          {course.isInstructor ? (
+            <div className="space-y-2">
+              <Button asChild className="w-full">
+                <Link href={`/courses/${course.id}/manage`}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  코스 관리
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="w-full">
+                <Link href={`/courses/${course.id}/assignments`}>
+                  <ClipboardList className="mr-2 h-4 w-4" />
+                  과제 관리
+                </Link>
+              </Button>
+            </div>
+          ) : course.isEnrolled ? (
+            <div className="space-y-2">
+              <Button asChild className="w-full">
+                <Link href={`/courses/${course.id}/assignments`}>
+                  <ClipboardList className="mr-2 h-4 w-4" />
+                  과제 보기
+                </Link>
+              </Button>
+              <EnrollmentButton
+                courseId={course.id}
+                isEnrolled={true}
+              />
+            </div>
+          ) : (
+            <EnrollmentButton
+              courseId={course.id}
+              isEnrolled={false}
+            />
+          )}
         </CardContent>
       </Card>
     </div>

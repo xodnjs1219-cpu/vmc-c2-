@@ -77,6 +77,7 @@ export const InstructorRecentSubmissionSchema = z.object({
   id: z.string().uuid(),
   assignmentId: z.string().uuid(),
   assignmentTitle: z.string(),
+  courseId: z.string().uuid(),
   learnerName: z.string(),
   submittedAt: z.string(),
   status: z.enum(['submitted', 'graded', 'resubmission_required']),

@@ -2,7 +2,7 @@ import axios, { isAxiosError } from "axios";
 import { createClient } from "@/lib/supabase/client";
 
 const apiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL ?? "",
+  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api",
   headers: {
     "Content-Type": "application/json",
   },
@@ -19,6 +19,28 @@ apiClient.interceptors.request.use(async (config) => {
 
   return config;
 });
+
+// Add response interceptor to extract error messages
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (isAxiosError(error)) {
+      const payload = error.response?.data as ErrorPayload | undefined;
+      
+      // Extract the most specific error message
+      const message = 
+        payload?.error?.message ||
+        payload?.message ||
+        error.message ||
+        'API request failed.';
+      
+      // Replace the error message with the extracted one
+      error.message = message;
+    }
+    
+    return Promise.reject(error);
+  }
+);
 
 type ErrorPayload = {
   error?: {

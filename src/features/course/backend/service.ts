@@ -18,7 +18,9 @@ import type {
 
 export async function getCourses(
   client: SupabaseClient,
-  query: CourseListQuery
+  query: CourseListQuery,
+  userId?: string,
+  userRole?: string
 ): Promise<Result<CourseListResponse>> {
   try {
     const { search, categoryId, difficultyId, status, sortBy, sortOrder, page, limit } = query;
@@ -39,13 +41,22 @@ export async function getCourses(
         category_id,
         difficulty_id,
         instructor_id,
-        categories!inner(id, name),
-        difficulties!inner(id, name, level),
-        profiles!inner(id, name)
+        categories(id, name),
+        difficulties(id, name, level)
       `,
         { count: 'exact' }
-      )
-      .eq('status', status || 'published');
+      );
+
+    // Status filter: instructor는 자신의 모든 코스 볼 수 있음, 일반 사용자는 published만
+    if (status) {
+      coursesQuery = coursesQuery.eq('status', status);
+    } else if (userRole === 'instructor' && userId) {
+      // Instructor는 자신의 모든 코스 + 다른 사람의 published 코스 볼 수 있음
+      coursesQuery = coursesQuery.or(`instructor_id.eq.${userId},status.eq.published`);
+    } else {
+      // 일반 사용자는 published만
+      coursesQuery = coursesQuery.eq('status', 'published');
+    }
 
     // Search filter
     if (search) {
@@ -101,30 +112,42 @@ export async function getCourses(
       enrollmentCountMap.set(e.course_id, (enrollmentCountMap.get(e.course_id) || 0) + 1);
     });
 
+    // Get instructor profiles
+    const instructorIds = [...new Set(coursesData.map((c) => c.instructor_id))];
+    const { data: instructors } = await client
+      .from('profiles')
+      .select('id, name')
+      .in('id', instructorIds);
+
+    const instructorMap = new Map<string, { id: string; name: string }>();
+    instructors?.forEach((instructor) => {
+      instructorMap.set(instructor.id, { id: instructor.id, name: instructor.name });
+    });
+
     // Transform data
-    const courses: Course[] = coursesData.map((course) => ({
-      id: course.id,
-      title: course.title,
-      description: course.description,
-      curriculum: course.curriculum,
-      status: course.status as 'draft' | 'published' | 'archived',
-      category: {
-        id: (course.categories as any).id,
-        name: (course.categories as any).name,
-      },
-      difficulty: {
-        id: (course.difficulties as any).id,
-        name: (course.difficulties as any).name,
-        level: (course.difficulties as any).level,
-      },
-      instructor: {
-        id: (course.profiles as any).id,
-        name: (course.profiles as any).name,
-      },
-      enrollmentCount: enrollmentCountMap.get(course.id) || 0,
-      createdAt: course.created_at,
-      updatedAt: course.updated_at,
-    }));
+    const courses: Course[] = coursesData
+      .filter((course) => instructorMap.has(course.instructor_id))
+      .map((course) => ({
+        id: course.id,
+        title: course.title,
+        description: course.description,
+        curriculum: course.curriculum,
+        status: course.status as 'draft' | 'published' | 'archived',
+        category: {
+          id: (course.categories as any).id,
+          name: (course.categories as any).name,
+        },
+        difficulty: {
+          id: (course.difficulties as any).id,
+          name: (course.difficulties as any).name,
+          level: (course.difficulties as any).level,
+        },
+        instructor: instructorMap.get(course.instructor_id)!,
+        enrollmentCount: enrollmentCountMap.get(course.id) || 0,
+        isInstructor: userId ? course.instructor_id === userId : false,
+        createdAt: course.created_at,
+        updatedAt: course.updated_at,
+      }));
 
     const totalPages = Math.ceil((count || 0) / limit);
 
@@ -167,9 +190,8 @@ export async function getCourseById(
         category_id,
         difficulty_id,
         instructor_id,
-        categories!inner(id, name),
-        difficulties!inner(id, name, level),
-        profiles!inner(id, name)
+        categories(id, name),
+        difficulties(id, name, level)
       `
       )
       .eq('id', courseId)
@@ -177,6 +199,17 @@ export async function getCourseById(
 
     if (courseError || !courseData) {
       return failure(courseErrorCodes.courseNotFound, 'Course not found');
+    }
+
+    // Get instructor info from profiles table
+    const { data: instructorData } = await client
+      .from('profiles')
+      .select('id, name')
+      .eq('id', courseData.instructor_id)
+      .single();
+
+    if (!instructorData) {
+      return failure(courseErrorCodes.fetchFailed, 'Instructor profile not found');
     }
 
     // Check if course is published (unless user is the instructor)
@@ -203,6 +236,9 @@ export async function getCourseById(
       isEnrolled = !!enrollmentData;
     }
 
+    // Check if user is the instructor
+    const isInstructor = userId ? courseData.instructor_id === userId : false;
+
     const course: Course = {
       id: courseData.id,
       title: courseData.title,
@@ -219,11 +255,12 @@ export async function getCourseById(
         level: (courseData.difficulties as any).level,
       },
       instructor: {
-        id: (courseData.profiles as any).id,
-        name: (courseData.profiles as any).name,
+        id: instructorData.id,
+        name: instructorData.name,
       },
       enrollmentCount: enrollmentCount || 0,
       isEnrolled,
+      isInstructor,
       createdAt: courseData.created_at,
       updatedAt: courseData.updated_at,
     };

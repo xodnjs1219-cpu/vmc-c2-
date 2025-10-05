@@ -10,22 +10,36 @@ export function registerEnrollmentRoutes(app: Hono<AppEnv>) {
   app.post('/enrollments', async (c) => {
     const supabase = c.get('supabase');
 
-    // Get user from session
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
+    // Get current user from Authorization header
+    const authHeader = c.req.header('authorization');
+    if (!authHeader) {
       return c.json(
         {
           error: {
             code: enrollmentErrorCodes.unauthorized,
-            message: 'Authentication required',
+            message: '인증이 필요합니다',
           },
         },
         401
       );
     }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: userData, error: userError } = await supabase.auth.getUser(token);
+
+    if (userError || !userData.user) {
+      return c.json(
+        {
+          error: {
+            code: enrollmentErrorCodes.unauthorized,
+            message: '유효하지 않은 토큰입니다',
+          },
+        },
+        401
+      );
+    }
+
+    const user = userData.user;
 
     // Parse body
     const body = await c.req.json();
@@ -64,22 +78,36 @@ export function registerEnrollmentRoutes(app: Hono<AppEnv>) {
   app.delete('/enrollments', async (c) => {
     const supabase = c.get('supabase');
 
-    // Get user from session
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
+    // Get current user from Authorization header
+    const authHeader = c.req.header('authorization');
+    if (!authHeader) {
       return c.json(
         {
           error: {
             code: enrollmentErrorCodes.unauthorized,
-            message: 'Authentication required',
+            message: '인증이 필요합니다',
           },
         },
         401
       );
     }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: userData, error: userError } = await supabase.auth.getUser(token);
+
+    if (userError || !userData.user) {
+      return c.json(
+        {
+          error: {
+            code: enrollmentErrorCodes.unauthorized,
+            message: '유효하지 않은 토큰입니다',
+          },
+        },
+        401
+      );
+    }
+
+    const user = userData.user;
 
     // Parse body
     const body = await c.req.json();

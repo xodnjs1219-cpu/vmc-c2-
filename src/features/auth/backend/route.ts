@@ -1,5 +1,10 @@
 import type { Hono } from 'hono';
-import { failure, respond, type ErrorResult } from '@/backend/http/response';
+import {
+  failure,
+  respond,
+  success,
+  type ErrorResult,
+} from '@/backend/http/response';
 import { getLogger, getSupabase, type AppEnv } from '@/backend/hono/context';
 import { SignupRequestSchema } from './schema';
 import { signup } from './service';
@@ -49,10 +54,10 @@ export const registerAuthRoutes = (app: Hono<AppEnv>) => {
       );
     }
 
-    return c.json({
-      ok: true,
-      data: profile,
-    });
+    // 디버깅 로그
+    logger.info(`[Profile API] userId: ${userId}, role: ${profile.role}, name: ${profile.name}`);
+
+    return respond(c, success(profile));
   });
 
   // Get required terms

@@ -36,20 +36,55 @@ export const registerDashboardRoutes = (app: Hono<AppEnv>) => {
 
     const userId = userData.user.id;
 
-    // Check if user is learner
-    const { data: profile } = await supabase
+    // Check if user is not instructor (learner, operator can access)
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', userId)
       .single();
 
-    if (!profile || profile.role !== 'learner') {
+    if (profileError) {
+      logger.error(`Profile query error for user ${userId}:`, profileError);
+      return respond(
+        c,
+        failure(
+          500,
+          dashboardErrorCodes.fetchFailed,
+          '프로필 조회 중 오류가 발생했습니다',
+        ),
+      );
+    }
+
+    if (!profile) {
+      logger.warn(`Profile not found for user: ${userId}`);
+      return respond(
+        c,
+        failure(
+          404,
+          dashboardErrorCodes.forbidden,
+          '프로필 정보를 찾을 수 없습니다',
+        ),
+      );
+    }
+
+    if (profile.role === 'instructor') {
       return respond(
         c,
         failure(
           403,
           dashboardErrorCodes.forbidden,
-          '학습자 전용 페이지입니다',
+          '강사는 학습자 대시보드에 접근할 수 없습니다',
+        ),
+      );
+    }
+
+    if (profile.role !== 'learner' && profile.role !== 'operator') {
+      return respond(
+        c,
+        failure(
+          403,
+          dashboardErrorCodes.forbidden,
+          '학습자 또는 운영자만 접근할 수 있습니다',
         ),
       );
     }
