@@ -228,3 +228,39 @@ export const SubmissionListResponseSchema = z.object({
 });
 
 export type SubmissionListResponse = z.infer<typeof SubmissionListResponseSchema>;
+
+/**
+ * Submission Detail Schema (Instructor)
+ */
+export const SubmissionDetailSchema = z.object({
+  id: z.string().uuid(),
+  assignmentId: z.string().uuid(),
+  assignmentTitle: z.string(),
+  learnerId: z.string().uuid(),
+  learnerName: z.string(),
+  textContent: z.string(),
+  link: z.string().nullable(),
+  status: z.enum(['submitted', 'graded', 'resubmission_required']),
+  score: z.number().nullable(),
+  feedback: z.string().nullable(),
+  isLate: z.boolean(),
+  submittedAt: z.string().datetime(),
+  gradedAt: z.string().datetime().nullable(),
+  allowResubmission: z.boolean(),
+});
+
+export type SubmissionDetail = z.infer<typeof SubmissionDetailSchema>;
+
+/**
+ * Grade Submission Request Schema (Instructor)
+ */
+export const GradeSubmissionRequestSchema = z.object({
+  score: z
+    .number()
+    .min(0, '점수는 0 이상이어야 합니다')
+    .max(100, '점수는 100 이하여야 합니다'),
+  feedback: z.string().min(1, '피드백을 입력하세요'),
+  requestResubmission: z.boolean().default(false),
+});
+
+export type GradeSubmissionRequest = z.infer<typeof GradeSubmissionRequestSchema>;

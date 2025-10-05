@@ -89,3 +89,41 @@ export const useAssignmentSubmissions = (
     gcTime: 5 * 60 * 1000, // 5분
   });
 };
+
+export const useSubmissionDetail = (submissionId: string) => {
+  return useQuery<import('@/features/assignment/lib/dto').SubmissionDetail>({
+    queryKey: ['instructor', 'submission', submissionId],
+    queryFn: async () => {
+      const response = await apiClient.get<import('@/features/assignment/lib/dto').SubmissionDetail>(
+        `/instructor/submissions/${submissionId}`,
+      );
+      return response.data;
+    },
+    staleTime: 1 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+  });
+};
+
+export const useGradeSubmission = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    void,
+    Error,
+    {
+      submissionId: string;
+      request: import('@/features/assignment/lib/dto').GradeSubmissionRequest;
+    }
+  >({
+    mutationFn: async ({ submissionId, request }) => {
+      await apiClient.post(`/instructor/submissions/${submissionId}/grade`, request);
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['instructor', 'submission', variables.submissionId],
+      });
+      queryClient.invalidateQueries({ queryKey: ['instructor', 'dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['instructor', 'assignment'] });
+    },
+  });
+};

@@ -22,4 +22,8 @@ export {
   type SubmissionFilterQuery,
   type SubmissionListItem,
   type SubmissionListResponse,
+  SubmissionDetailSchema,
+  type SubmissionDetail,
+  GradeSubmissionRequestSchema,
+  type GradeSubmissionRequest,
 } from '../backend/schema';

@@ -613,3 +613,155 @@ export async function getAssignmentSubmissions(
     total: submissions.length,
   });
 }
+
+import type { SubmissionDetail, GradeSubmissionRequest } from './schema';
+
+/**
+ * Get Submission Detail (Instructor)
+ *
+ * @param client - Supabase client
+ * @param instructorId - Instructor ID
+ * @param submissionId - Submission ID
+ * @returns Submission detail or error
+ */
+export async function getSubmissionDetail(
+  client: SupabaseClient,
+  instructorId: string,
+  submissionId: string,
+): Promise<Result<SubmissionDetail, string>> {
+  // 1. Get submission with assignment and course info
+  const { data: submission, error: submissionError } = await client
+    .from('submissions')
+    .select(
+      `
+      id,
+      assignment_id,
+      learner_id,
+      text_content,
+      link,
+      status,
+      score,
+      feedback,
+      is_late,
+      submitted_at,
+      graded_at,
+      assignments!inner(
+        title,
+        allow_resubmission,
+        courses!inner(instructor_id)
+      ),
+      profiles!inner(name)
+    `,
+    )
+    .eq('id', submissionId)
+    .single();
+
+  if (submissionError || !submission) {
+    return failure(submissionErrorCodes.submissionNotFound, '제출물을 찾을 수 없습니다');
+  }
+
+  // 2. Check ownership
+  const instructorIdFromCourse = (submission.assignments as any).courses.instructor_id;
+  if (instructorIdFromCourse !== instructorId) {
+    return failure(submissionErrorCodes.unauthorized, '권한이 없습니다');
+  }
+
+  // 3. Build response
+  const detail: SubmissionDetail = {
+    id: submission.id,
+    assignmentId: submission.assignment_id,
+    assignmentTitle: (submission.assignments as any).title,
+    learnerId: submission.learner_id,
+    learnerName: (submission.profiles as any).name,
+    textContent: submission.text_content,
+    link: submission.link,
+    status: submission.status as 'submitted' | 'graded' | 'resubmission_required',
+    score: submission.score,
+    feedback: submission.feedback,
+    isLate: submission.is_late,
+    submittedAt: submission.submitted_at,
+    gradedAt: submission.graded_at,
+    allowResubmission: (submission.assignments as any).allow_resubmission,
+  };
+
+  return success(detail);
+}
+
+/**
+ * Grade Submission (Instructor)
+ *
+ * @param client - Supabase client
+ * @param instructorId - Instructor ID
+ * @param submissionId - Submission ID
+ * @param request - Grade submission request
+ * @returns Success or error
+ */
+export async function gradeSubmission(
+  client: SupabaseClient,
+  instructorId: string,
+  submissionId: string,
+  request: GradeSubmissionRequest,
+): Promise<Result<void, string>> {
+  // 1. Get submission with assignment info
+  const { data: submission, error: submissionError } = await client
+    .from('submissions')
+    .select(
+      `
+      id,
+      assignment_id,
+      status,
+      assignments!inner(
+        allow_resubmission,
+        courses!inner(instructor_id)
+      )
+    `,
+    )
+    .eq('id', submissionId)
+    .single();
+
+  if (submissionError || !submission) {
+    return failure(submissionErrorCodes.submissionNotFound, '제출물을 찾을 수 없습니다');
+  }
+
+  // 2. Check ownership
+  const instructorIdFromCourse = (submission.assignments as any).courses.instructor_id;
+  if (instructorIdFromCourse !== instructorId) {
+    return failure(submissionErrorCodes.unauthorized, '권한이 없습니다');
+  }
+
+  // 3. Check if resubmission is allowed (if requested)
+  if (
+    request.requestResubmission &&
+    !(submission.assignments as any).allow_resubmission
+  ) {
+    return failure(
+      submissionErrorCodes.resubmissionNotAllowed,
+      '이 과제는 재제출을 허용하지 않습니다',
+    );
+  }
+
+  // 4. Update submission
+  const updateData: Record<string, any> = {
+    score: request.score,
+    feedback: request.feedback,
+    graded_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  if (request.requestResubmission) {
+    updateData.status = 'resubmission_required';
+  } else {
+    updateData.status = 'graded';
+  }
+
+  const { error: updateError } = await client
+    .from('submissions')
+    .update(updateData)
+    .eq('id', submissionId);
+
+  if (updateError) {
+    return failure(submissionErrorCodes.databaseError, '채점 저장에 실패했습니다');
+  }
+
+  return success(undefined);
+}

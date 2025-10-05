@@ -728,4 +728,175 @@ export function registerAssignmentRoutes(app: Hono<AppEnv>) {
       result.error === assignmentErrorCodes.assignmentNotFound ? 404 : 400,
     );
   });
+
+  /**
+   * GET /instructor/submissions/:submissionId
+   * Get submission detail (Instructor only)
+   */
+  app.get('/instructor/submissions/:submissionId', async (c) => {
+    const supabase = c.get('supabase');
+
+    // Get current user
+    const authHeader = c.req.header('authorization');
+    if (!authHeader) {
+      return c.json(
+        {
+          error: {
+            code: submissionErrorCodes.unauthorized,
+            message: '인증이 필요합니다',
+          },
+        },
+        401,
+      );
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: userData, error: userError } = await supabase.auth.getUser(token);
+
+    if (userError || !userData.user) {
+      return c.json(
+        {
+          error: {
+            code: submissionErrorCodes.unauthorized,
+            message: '유효하지 않은 토큰입니다',
+          },
+        },
+        401,
+      );
+    }
+
+    const userId = userData.user.id;
+
+    // Check instructor role
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', userId)
+      .single();
+
+    if (!profile || profile.role !== 'instructor') {
+      return c.json(
+        {
+          error: {
+            code: submissionErrorCodes.unauthorized,
+            message: '강사만 제출물을 조회할 수 있습니다',
+          },
+        },
+        403,
+      );
+    }
+
+    const submissionId = c.req.param('submissionId');
+
+    const { getSubmissionDetail } = await import('./service');
+    const result = await getSubmissionDetail(supabase, userId, submissionId);
+
+    if (!isFailure(result)) {
+      return c.json(result.data);
+    }
+
+    return c.json(
+      {
+        error: {
+          code: result.error,
+          message: result.message,
+        },
+      },
+      result.error === submissionErrorCodes.submissionNotFound ? 404 : 400,
+    );
+  });
+
+  /**
+   * POST /instructor/submissions/:submissionId/grade
+   * Grade submission (Instructor only)
+   */
+  app.post('/instructor/submissions/:submissionId/grade', async (c) => {
+    const supabase = c.get('supabase');
+
+    // Get current user
+    const authHeader = c.req.header('authorization');
+    if (!authHeader) {
+      return c.json(
+        {
+          error: {
+            code: submissionErrorCodes.unauthorized,
+            message: '인증이 필요합니다',
+          },
+        },
+        401,
+      );
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: userData, error: userError } = await supabase.auth.getUser(token);
+
+    if (userError || !userData.user) {
+      return c.json(
+        {
+          error: {
+            code: submissionErrorCodes.unauthorized,
+            message: '유효하지 않은 토큰입니다',
+          },
+        },
+        401,
+      );
+    }
+
+    const userId = userData.user.id;
+
+    // Check instructor role
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', userId)
+      .single();
+
+    if (!profile || profile.role !== 'instructor') {
+      return c.json(
+        {
+          error: {
+            code: submissionErrorCodes.unauthorized,
+            message: '강사만 채점할 수 있습니다',
+          },
+        },
+        403,
+      );
+    }
+
+    const submissionId = c.req.param('submissionId');
+
+    // Parse request body
+    const body = await c.req.json();
+    const { GradeSubmissionRequestSchema } = await import('./schema');
+    const parseResult = GradeSubmissionRequestSchema.safeParse(body);
+
+    if (!parseResult.success) {
+      return c.json(
+        {
+          error: {
+            code: submissionErrorCodes.invalidRequest,
+            message: parseResult.error.errors[0].message,
+          },
+        },
+        400,
+      );
+    }
+
+    const { gradeSubmission } = await import('./service');
+    const result = await gradeSubmission(supabase, userId, submissionId, parseResult.data);
+
+    if (!isFailure(result)) {
+      return c.json({ success: true });
+    }
+
+    return c.json(
+      {
+        error: {
+          code: result.error,
+          message: result.message,
+        },
+      },
+      result.error === submissionErrorCodes.submissionNotFound ? 404 : 400,
+    );
+  });
 }
