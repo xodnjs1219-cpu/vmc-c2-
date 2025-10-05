@@ -3,11 +3,15 @@
  */
 export const assignmentErrorCodes = {
   invalidRequest: 'ASSIGNMENT_INVALID_REQUEST',
+  invalidInput: 'ASSIGNMENT_INVALID_INPUT',
   unauthorized: 'ASSIGNMENT_UNAUTHORIZED',
   notEnrolled: 'ASSIGNMENT_NOT_ENROLLED',
   notFound: 'ASSIGNMENT_NOT_FOUND',
+  assignmentNotFound: 'ASSIGNMENT_NOT_FOUND',
+  courseNotFound: 'ASSIGNMENT_COURSE_NOT_FOUND',
   notPublished: 'ASSIGNMENT_NOT_PUBLISHED',
   fetchFailed: 'ASSIGNMENT_FETCH_FAILED',
+  databaseError: 'ASSIGNMENT_DATABASE_ERROR',
 } as const;
 
 export type AssignmentErrorCode =

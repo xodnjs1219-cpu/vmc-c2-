@@ -355,3 +355,261 @@ export async function resubmitAssignment(
 
   return success(response);
 }
+
+// ========================================
+// Instructor Functions
+// ========================================
+
+import type {
+  CreateAssignmentRequest,
+  CreateAssignmentResponse,
+  UpdateAssignmentRequest,
+  UpdateAssignmentStatusRequest,
+  SubmissionFilterQuery,
+  SubmissionListResponse,
+} from './schema';
+
+/**
+ * Create Assignment (Instructor)
+ */
+export async function createAssignment(
+  client: SupabaseClient,
+  instructorId: string,
+  courseId: string,
+  request: CreateAssignmentRequest,
+): Promise<Result<CreateAssignmentResponse, string>> {
+  // 1. Check course ownership
+  const { data: course, error: courseError } = await client
+    .from('courses')
+    .select('instructor_id')
+    .eq('id', courseId)
+    .single();
+
+  if (courseError || !course) {
+    return failure(assignmentErrorCodes.courseNotFound, '코스를 찾을 수 없습니다');
+  }
+
+  if (course.instructor_id !== instructorId) {
+    return failure(assignmentErrorCodes.unauthorized, '권한이 없습니다');
+  }
+
+  // 2. Validate due date
+  const dueDate = new Date(request.dueDate);
+  if (dueDate < new Date()) {
+    return failure(
+      assignmentErrorCodes.invalidInput,
+      '마감일은 현재 시간 이후여야 합니다',
+    );
+  }
+
+  // 3. Insert assignment
+  const { data: assignment, error: insertError } = await client
+    .from('assignments')
+    .insert({
+      course_id: courseId,
+      title: request.title,
+      description: request.description,
+      due_date: request.dueDate,
+      weight: request.weight,
+      allow_late: request.allowLate,
+      allow_resubmission: request.allowResubmission,
+      status: 'draft',
+    })
+    .select('id, title, status')
+    .single();
+
+  if (insertError || !assignment) {
+    return failure(assignmentErrorCodes.databaseError, '과제 생성에 실패했습니다');
+  }
+
+  return success({
+    id: assignment.id,
+    title: assignment.title,
+    status: assignment.status as 'draft' | 'published' | 'closed',
+  });
+}
+
+/**
+ * Update Assignment (Instructor)
+ */
+export async function updateAssignment(
+  client: SupabaseClient,
+  instructorId: string,
+  assignmentId: string,
+  request: UpdateAssignmentRequest,
+): Promise<Result<void, string>> {
+  // 1. Check ownership
+  const { data: assignment, error: assignmentError } = await client
+    .from('assignments')
+    .select('id, course_id, courses!inner(instructor_id)')
+    .eq('id', assignmentId)
+    .single();
+
+  if (assignmentError || !assignment) {
+    return failure(assignmentErrorCodes.assignmentNotFound, '과제를 찾을 수 없습니다');
+  }
+
+  const instructorIdFromCourse = (assignment.courses as any).instructor_id;
+  if (instructorIdFromCourse !== instructorId) {
+    return failure(assignmentErrorCodes.unauthorized, '권한이 없습니다');
+  }
+
+  // 2. Build update object
+  const updateData: Record<string, any> = {};
+  if (request.title !== undefined) updateData.title = request.title;
+  if (request.description !== undefined) updateData.description = request.description;
+  if (request.dueDate !== undefined) {
+    const dueDate = new Date(request.dueDate);
+    if (dueDate < new Date()) {
+      return failure(
+        assignmentErrorCodes.invalidInput,
+        '마감일은 현재 시간 이후여야 합니다',
+      );
+    }
+    updateData.due_date = request.dueDate;
+  }
+  if (request.weight !== undefined) updateData.weight = request.weight;
+  if (request.allowLate !== undefined) updateData.allow_late = request.allowLate;
+  if (request.allowResubmission !== undefined)
+    updateData.allow_resubmission = request.allowResubmission;
+  updateData.updated_at = new Date().toISOString();
+
+  // 3. Update assignment
+  const { error: updateError } = await client
+    .from('assignments')
+    .update(updateData)
+    .eq('id', assignmentId);
+
+  if (updateError) {
+    return failure(assignmentErrorCodes.databaseError, '과제 수정에 실패했습니다');
+  }
+
+  return success(undefined);
+}
+
+/**
+ * Update Assignment Status (Instructor)
+ */
+export async function updateAssignmentStatus(
+  client: SupabaseClient,
+  instructorId: string,
+  assignmentId: string,
+  request: UpdateAssignmentStatusRequest,
+): Promise<Result<void, string>> {
+  // 1. Check ownership
+  const { data: assignment, error: assignmentError } = await client
+    .from('assignments')
+    .select('id, status, course_id, courses!inner(instructor_id)')
+    .eq('id', assignmentId)
+    .single();
+
+  if (assignmentError || !assignment) {
+    return failure(assignmentErrorCodes.assignmentNotFound, '과제를 찾을 수 없습니다');
+  }
+
+  const instructorIdFromCourse = (assignment.courses as any).instructor_id;
+  if (instructorIdFromCourse !== instructorId) {
+    return failure(assignmentErrorCodes.unauthorized, '권한이 없습니다');
+  }
+
+  // 2. Validate status transition
+  if (assignment.status === 'closed' && request.status === 'published') {
+    return failure(
+      assignmentErrorCodes.invalidInput,
+      '마감된 과제는 다시 공개할 수 없습니다',
+    );
+  }
+
+  // 3. Update status
+  const { error: updateError } = await client
+    .from('assignments')
+    .update({
+      status: request.status,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', assignmentId);
+
+  if (updateError) {
+    return failure(assignmentErrorCodes.databaseError, '상태 변경에 실패했습니다');
+  }
+
+  return success(undefined);
+}
+
+/**
+ * Get Assignment Submissions (Instructor)
+ */
+export async function getAssignmentSubmissions(
+  client: SupabaseClient,
+  instructorId: string,
+  assignmentId: string,
+  query: SubmissionFilterQuery,
+): Promise<Result<SubmissionListResponse, string>> {
+  // 1. Check ownership
+  const { data: assignment, error: assignmentError } = await client
+    .from('assignments')
+    .select('id, course_id, courses!inner(instructor_id)')
+    .eq('id', assignmentId)
+    .single();
+
+  if (assignmentError || !assignment) {
+    return failure(assignmentErrorCodes.assignmentNotFound, '과제를 찾을 수 없습니다');
+  }
+
+  const instructorIdFromCourse = (assignment.courses as any).instructor_id;
+  if (instructorIdFromCourse !== instructorId) {
+    return failure(assignmentErrorCodes.unauthorized, '권한이 없습니다');
+  }
+
+  // 2. Build query with filter
+  let submissionsQuery = client
+    .from('submissions')
+    .select(
+      `
+      id,
+      assignment_id,
+      learner_id,
+      status,
+      is_late,
+      submitted_at,
+      score,
+      profiles!inner(name)
+    `,
+    )
+    .eq('assignment_id', assignmentId);
+
+  // Apply filter
+  if (query.filter === 'pending') {
+    submissionsQuery = submissionsQuery.eq('status', 'submitted');
+  } else if (query.filter === 'late') {
+    submissionsQuery = submissionsQuery.eq('is_late', true);
+  } else if (query.filter === 'resubmission') {
+    submissionsQuery = submissionsQuery.eq('status', 'resubmission_required');
+  }
+
+  const { data: submissions, error: submissionsError } = await submissionsQuery.order(
+    'submitted_at',
+    { ascending: false },
+  );
+
+  if (submissionsError) {
+    return failure(submissionErrorCodes.databaseError, '제출물 조회에 실패했습니다');
+  }
+
+  // 3. Transform data
+  const submissionList = submissions.map((s: any) => ({
+    id: s.id,
+    assignmentId: s.assignment_id,
+    learnerId: s.learner_id,
+    learnerName: s.profiles.name,
+    status: s.status,
+    isLate: s.is_late,
+    submittedAt: s.submitted_at,
+    score: s.score,
+  }));
+
+  return success({
+    submissions: submissionList,
+    total: submissions.length,
+  });
+}

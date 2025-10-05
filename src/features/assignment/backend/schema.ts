@@ -141,3 +141,90 @@ export const ResubmitAssignmentResponseSchema = z.object({
 });
 
 export type ResubmitAssignmentResponse = z.infer<typeof ResubmitAssignmentResponseSchema>;
+
+// ========================================
+// Instructor Mutation Schemas
+// ========================================
+
+/**
+ * Create Assignment Request Schema (Instructor)
+ */
+export const CreateAssignmentRequestSchema = z.object({
+  title: z.string().min(1, '제목을 입력하세요').max(200, '제목은 최대 200자까지 입력 가능합니다'),
+  description: z.string().min(1, '설명을 입력하세요'),
+  dueDate: z.string().datetime('유효한 날짜를 입력하세요'),
+  weight: z.number().min(0, '점수 비중은 0 이상이어야 합니다').max(100, '점수 비중은 100 이하여야 합니다'),
+  allowLate: z.boolean().default(false),
+  allowResubmission: z.boolean().default(false),
+});
+
+export type CreateAssignmentRequest = z.infer<typeof CreateAssignmentRequestSchema>;
+
+/**
+ * Update Assignment Request Schema (Instructor)
+ */
+export const UpdateAssignmentRequestSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().min(1).optional(),
+  dueDate: z.string().datetime().optional(),
+  weight: z.number().min(0).max(100).optional(),
+  allowLate: z.boolean().optional(),
+  allowResubmission: z.boolean().optional(),
+});
+
+export type UpdateAssignmentRequest = z.infer<typeof UpdateAssignmentRequestSchema>;
+
+/**
+ * Update Assignment Status Request Schema (Instructor)
+ */
+export const UpdateAssignmentStatusRequestSchema = z.object({
+  status: z.enum(['draft', 'published', 'closed']),
+});
+
+export type UpdateAssignmentStatusRequest = z.infer<typeof UpdateAssignmentStatusRequestSchema>;
+
+/**
+ * Create Assignment Response Schema (Instructor)
+ */
+export const CreateAssignmentResponseSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  status: z.enum(['draft', 'published', 'closed']),
+});
+
+export type CreateAssignmentResponse = z.infer<typeof CreateAssignmentResponseSchema>;
+
+/**
+ * Submission Filter Query Schema (Instructor)
+ */
+export const SubmissionFilterQuerySchema = z.object({
+  filter: z.enum(['all', 'pending', 'late', 'resubmission']).default('all'),
+});
+
+export type SubmissionFilterQuery = z.infer<typeof SubmissionFilterQuerySchema>;
+
+/**
+ * Submission List Item Schema (Instructor)
+ */
+export const SubmissionListItemSchema = z.object({
+  id: z.string().uuid(),
+  assignmentId: z.string().uuid(),
+  learnerId: z.string().uuid(),
+  learnerName: z.string(),
+  status: z.enum(['submitted', 'graded', 'resubmission_required']),
+  isLate: z.boolean(),
+  submittedAt: z.string().datetime(),
+  score: z.number().nullable(),
+});
+
+export type SubmissionListItem = z.infer<typeof SubmissionListItemSchema>;
+
+/**
+ * Submission List Response Schema (Instructor)
+ */
+export const SubmissionListResponseSchema = z.object({
+  submissions: z.array(SubmissionListItemSchema),
+  total: z.number().int(),
+});
+
+export type SubmissionListResponse = z.infer<typeof SubmissionListResponseSchema>;
