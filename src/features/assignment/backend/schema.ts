@@ -89,3 +89,55 @@ export const AssignmentDetailParamsSchema = z.object({
 });
 
 export type AssignmentDetailParams = z.infer<typeof AssignmentDetailParamsSchema>;
+
+/**
+ * Submit Assignment Request Schema
+ */
+export const SubmitAssignmentRequestSchema = z.object({
+  assignmentId: z.string().uuid(),
+  textContent: z.string().min(1, '과제 내용을 입력해주세요'),
+  link: z.string().url('올바른 URL 형식을 입력해주세요').optional().nullable(),
+});
+
+export type SubmitAssignmentRequest = z.infer<typeof SubmitAssignmentRequestSchema>;
+
+/**
+ * Submit Assignment Response Schema
+ */
+export const SubmitAssignmentResponseSchema = z.object({
+  id: z.string().uuid(),
+  assignmentId: z.string().uuid(),
+  status: z.enum(['submitted']),
+  textContent: z.string(),
+  link: z.string().nullable(),
+  isLate: z.boolean(),
+  submittedAt: z.string().datetime(),
+});
+
+export type SubmitAssignmentResponse = z.infer<typeof SubmitAssignmentResponseSchema>;
+
+/**
+ * Resubmit Assignment Request Schema
+ */
+export const ResubmitAssignmentRequestSchema = z.object({
+  submissionId: z.string().uuid(),
+  textContent: z.string().min(1, '과제 내용을 입력해주세요'),
+  link: z.string().url('올바른 URL 형식을 입력해주세요').optional().nullable(),
+});
+
+export type ResubmitAssignmentRequest = z.infer<typeof ResubmitAssignmentRequestSchema>;
+
+/**
+ * Resubmit Assignment Response Schema
+ */
+export const ResubmitAssignmentResponseSchema = z.object({
+  id: z.string().uuid(),
+  assignmentId: z.string().uuid(),
+  status: z.enum(['submitted']),
+  textContent: z.string(),
+  link: z.string().nullable(),
+  isLate: z.boolean(),
+  submittedAt: z.string().datetime(),
+});
+
+export type ResubmitAssignmentResponse = z.infer<typeof ResubmitAssignmentResponseSchema>;

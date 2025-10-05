@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { useAssignmentDetail } from '../hooks/useAssignmentDetail';
 import { AssignmentStatus } from './assignment-status';
+import { SubmissionForm } from './submission-form';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -257,26 +258,19 @@ export function AssignmentDetail({ courseId, assignmentId }: AssignmentDetailPro
         </Card>
       )}
 
-      {/* 제출 버튼 영역 (미제출 + 제출 가능) */}
-      {!assignment.submission && assignment.canSubmit && (
-        <Card>
-          <CardContent className="pt-6">
-            <Button size="lg" className="w-full">
-              과제 제출하기
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 재제출 버튼 영역 */}
-      {assignment.submission?.status === 'resubmission_required' && assignment.canSubmit && (
-        <Card>
-          <CardContent className="pt-6">
-            <Button size="lg" className="w-full" variant="default">
-              과제 재제출하기
-            </Button>
-          </CardContent>
-        </Card>
+      {/* 제출 폼 영역 */}
+      {((!assignment.submission && assignment.canSubmit) ||
+        assignment.submission?.status === 'resubmission_required') && (
+        <SubmissionForm
+          assignmentId={assignment.id}
+          assignmentTitle={assignment.title}
+          dueDate={assignment.dueDate}
+          allowLate={assignment.allowLate}
+          canSubmit={assignment.canSubmit}
+          submitDisabledReason={assignment.submitDisabledReason}
+          submission={assignment.submission}
+          onSuccess={() => refetch()}
+        />
       )}
     </div>
   );

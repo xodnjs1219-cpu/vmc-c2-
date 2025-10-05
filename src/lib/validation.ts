@@ -15,3 +15,7 @@ export const isValidPhone = (phone: string): boolean => PHONE_REGEX.test(phone);
 
 // Normalize phone number (remove hyphens)
 export const normalizePhone = (phone: string): string => phone.replace(/-/g, '');
+
+// URL validation
+export const URL_REGEX = /^https?:\/\/.+/;
+export const isValidUrl = (url: string): boolean => URL_REGEX.test(url);
