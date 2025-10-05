@@ -20,7 +20,7 @@ import {
   SignupRequestSchema,
   type SignupRequest,
 } from "@/features/auth/lib/dto";
-import { USER_ROLES, ROLE_LABELS, ROLE_REDIRECT_PATHS } from "@/constants/auth";
+import { USER_ROLES, ROLE_LABELS } from "@/constants/auth";
 import { TermsDialog } from "@/features/auth/components/terms-dialog";
 
 export const SignupForm = () => {
@@ -51,18 +51,13 @@ export const SignupForm = () => {
   const onSubmit = (data: SignupRequest) => {
     signup(data, {
       onSuccess: (response) => {
-        // Save tokens
-        localStorage.setItem("accessToken", response.accessToken);
-        localStorage.setItem("refreshToken", response.refreshToken);
-
         toast({
           title: "회원가입 성공",
-          description: `${ROLE_LABELS[response.role]}으로 가입되었습니다`,
+          description: `${ROLE_LABELS[response.role]}으로 가입되었습니다. 로그인해주세요.`,
         });
 
-        // Redirect based on role
-        const redirectPath = ROLE_REDIRECT_PATHS[response.role];
-        router.push(redirectPath);
+        // Redirect to login page
+        router.push("/login");
       },
       onError: (error) => {
         toast({
