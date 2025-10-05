@@ -1,10 +1,23 @@
 import axios, { isAxiosError } from "axios";
+import { createClient } from "@/lib/supabase/client";
 
 const apiClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_BASE_URL ?? "",
   headers: {
     "Content-Type": "application/json",
   },
+});
+
+// Add authorization token to all requests
+apiClient.interceptors.request.use(async (config) => {
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+
+  if (session?.access_token) {
+    config.headers.Authorization = `Bearer ${session.access_token}`;
+  }
+
+  return config;
 });
 
 type ErrorPayload = {

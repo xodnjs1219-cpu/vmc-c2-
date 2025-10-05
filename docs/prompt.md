@@ -97,12 +97,12 @@ User / FE / BE / Database로 나누면 됩니다.
 ### 7. 구현
 
 ```bash
-@prd.md참조
-@userflow.md참조
-@database.md참조
+@prd.md 참조
+@userflow.md 참조
+@database.md 참조
 
-@spec.md참조
-@plan.md참조
+@spec.md 참조
+@plan.md 참조
 
 참조된 문서들을 기반으로 {기능 이름} 기능 구현하세요.
 - 모두 구현할때까지 멈추지말고 진행하세요.
