@@ -5,11 +5,13 @@ import { env } from "@/constants/env";
 import type { Database } from "./types";
 
 /**
- * Server Component용 읽기 전용 Supabase 클라이언트
- * Next.js 15에서는 Server Component에서 쿠키를 수정할 수 없으므로
- * 쿠키 읽기만 가능한 클라이언트를 생성합니다.
+ * Server Action 및 Route Handler용 Supabase 클라이언트
+ * 쿠키를 읽고 쓸 수 있습니다.
+ * 
+ * ⚠️ 주의: Server Component에서는 사용하지 마세요!
+ * Server Component에서는 createSupabaseServerClient()를 사용하세요.
  */
-export const createSupabaseServerClient = async (): Promise<
+export const createSupabaseServerActionClient = async (): Promise<
   SupabaseClient<Database>
 > => {
   const cookieStore = await cookies();
@@ -22,9 +24,10 @@ export const createSupabaseServerClient = async (): Promise<
         getAll() {
           return cookieStore.getAll();
         },
-        setAll() {
-          // Server Component에서는 쿠키 수정 불가
-          // 이 메서드는 호출되지 않아야 하지만, 호출되더라도 아무 작업도 하지 않음
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options);
+          });
         },
       },
     }

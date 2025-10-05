@@ -28,10 +28,10 @@ export function CourseFilter({
 
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [categoryId, setCategoryId] = useState(
-    searchParams.get('categoryId') || ''
+    searchParams.get('categoryId') || 'all'
   );
   const [difficultyId, setDifficultyId] = useState(
-    searchParams.get('difficultyId') || ''
+    searchParams.get('difficultyId') || 'all'
   );
   const [sortBy, setSortBy] = useState(
     searchParams.get('sortBy') || COURSE_SORT_BY.LATEST
@@ -54,8 +54,8 @@ export function CourseFilter({
     const params = new URLSearchParams();
 
     if (debouncedSearch) params.set('search', debouncedSearch);
-    if (categoryId) params.set('categoryId', categoryId);
-    if (difficultyId) params.set('difficultyId', difficultyId);
+    if (categoryId && categoryId !== 'all') params.set('categoryId', categoryId);
+    if (difficultyId && difficultyId !== 'all') params.set('difficultyId', difficultyId);
     if (sortBy) params.set('sortBy', sortBy);
     if (sortOrder) params.set('sortOrder', sortOrder);
 
@@ -64,8 +64,8 @@ export function CourseFilter({
 
   const handleReset = () => {
     setSearch('');
-    setCategoryId('');
-    setDifficultyId('');
+    setCategoryId('all');
+    setDifficultyId('all');
     setSortBy(COURSE_SORT_BY.LATEST);
     setSortOrder(COURSE_SORT_ORDER.DESC);
   };
@@ -84,7 +84,7 @@ export function CourseFilter({
             <SelectValue placeholder="카테고리 선택" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">전체</SelectItem>
+            <SelectItem value="all">전체</SelectItem>
             {categories.map((category) => (
               <SelectItem key={category.id} value={category.id}>
                 {category.name}
@@ -98,7 +98,7 @@ export function CourseFilter({
             <SelectValue placeholder="난이도 선택" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">전체</SelectItem>
+            <SelectItem value="all">전체</SelectItem>
             {difficulties.map((difficulty) => (
               <SelectItem key={difficulty.id} value={difficulty.id}>
                 {difficulty.name}
