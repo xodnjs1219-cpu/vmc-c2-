@@ -93,6 +93,36 @@ export const CourseListResponseSchema = z.object({
 export const CourseDetailResponseSchema = CourseSchema;
 
 // ========================================
+// Instructor Mutation Schemas
+// ========================================
+
+export const CreateCourseRequestSchema = z.object({
+  title: z.string().min(1, '제목을 입력하세요').max(200, '제목은 최대 200자까지 입력 가능합니다'),
+  description: z.string().min(1, '소개를 입력하세요'),
+  categoryId: z.string().uuid('유효한 카테고리를 선택하세요'),
+  difficultyId: z.string().uuid('유효한 난이도를 선택하세요'),
+  curriculum: z.string().optional(),
+});
+
+export const UpdateCourseRequestSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().min(1).optional(),
+  categoryId: z.string().uuid().optional(),
+  difficultyId: z.string().uuid().optional(),
+  curriculum: z.string().optional(),
+});
+
+export const UpdateCourseStatusRequestSchema = z.object({
+  status: z.enum(['draft', 'published', 'archived']),
+});
+
+export const CreateCourseResponseSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  status: z.enum(['draft', 'published', 'archived']),
+});
+
+// ========================================
 // Type Exports
 // ========================================
 
@@ -104,3 +134,7 @@ export type CourseDetailParams = z.infer<typeof CourseDetailParamsSchema>;
 export type Course = z.infer<typeof CourseSchema>;
 export type CourseListResponse = z.infer<typeof CourseListResponseSchema>;
 export type CourseDetailResponse = z.infer<typeof CourseDetailResponseSchema>;
+export type CreateCourseRequest = z.infer<typeof CreateCourseRequestSchema>;
+export type UpdateCourseRequest = z.infer<typeof UpdateCourseRequestSchema>;
+export type UpdateCourseStatusRequest = z.infer<typeof UpdateCourseStatusRequestSchema>;
+export type CreateCourseResponse = z.infer<typeof CreateCourseResponseSchema>;

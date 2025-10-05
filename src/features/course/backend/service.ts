@@ -6,6 +6,10 @@ import type {
   CourseListQuery,
   Course,
   CourseListResponse,
+  CreateCourseRequest,
+  CreateCourseResponse,
+  UpdateCourseRequest,
+  UpdateCourseStatusRequest,
 } from './schema';
 
 // ========================================
@@ -228,6 +232,221 @@ export async function getCourseById(
   } catch (error) {
     return failure(
       courseErrorCodes.fetchFailed,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
+  }
+}
+
+// ========================================
+// createCourse - 코스 생성 (Instructor)
+// ========================================
+
+export async function createCourse(
+  client: SupabaseClient,
+  instructorId: string,
+  request: CreateCourseRequest
+): Promise<Result<CreateCourseResponse>> {
+  try {
+    // Validate category and difficulty exist and are active
+    const { data: category } = await client
+      .from('categories')
+      .select('id')
+      .eq('id', request.categoryId)
+      .eq('is_active', true)
+      .single();
+
+    if (!category) {
+      return failure(courseErrorCodes.categoryNotFound, '유효한 카테고리를 선택하세요');
+    }
+
+    const { data: difficulty } = await client
+      .from('difficulties')
+      .select('id')
+      .eq('id', request.difficultyId)
+      .eq('is_active', true)
+      .single();
+
+    if (!difficulty) {
+      return failure(courseErrorCodes.difficultyNotFound, '유효한 난이도를 선택하세요');
+    }
+
+    // Insert course
+    const { data: courseData, error: courseError } = await client
+      .from('courses')
+      .insert({
+        instructor_id: instructorId,
+        title: request.title,
+        description: request.description,
+        category_id: request.categoryId,
+        difficulty_id: request.difficultyId,
+        curriculum: request.curriculum || null,
+        status: 'draft',
+      })
+      .select('id, title, status')
+      .single();
+
+    if (courseError || !courseData) {
+      return failure(courseErrorCodes.createFailed, '코스 생성에 실패했습니다');
+    }
+
+    return success({
+      id: courseData.id,
+      title: courseData.title,
+      status: courseData.status as 'draft' | 'published' | 'archived',
+    });
+  } catch (error) {
+    return failure(
+      courseErrorCodes.createFailed,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
+  }
+}
+
+// ========================================
+// updateCourse - 코스 수정 (Instructor)
+// ========================================
+
+export async function updateCourse(
+  client: SupabaseClient,
+  instructorId: string,
+  courseId: string,
+  request: UpdateCourseRequest
+): Promise<Result<Course>> {
+  try {
+    // Check ownership
+    const { data: existingCourse } = await client
+      .from('courses')
+      .select('id, instructor_id')
+      .eq('id', courseId)
+      .single();
+
+    if (!existingCourse) {
+      return failure(courseErrorCodes.courseNotFound, '코스를 찾을 수 없습니다');
+    }
+
+    if (existingCourse.instructor_id !== instructorId) {
+      return failure(courseErrorCodes.forbidden, '권한이 없습니다');
+    }
+
+    // Validate category if provided
+    if (request.categoryId) {
+      const { data: category } = await client
+        .from('categories')
+        .select('id')
+        .eq('id', request.categoryId)
+        .eq('is_active', true)
+        .single();
+
+      if (!category) {
+        return failure(courseErrorCodes.categoryNotFound, '유효한 카테고리를 선택하세요');
+      }
+    }
+
+    // Validate difficulty if provided
+    if (request.difficultyId) {
+      const { data: difficulty } = await client
+        .from('difficulties')
+        .select('id')
+        .eq('id', request.difficultyId)
+        .eq('is_active', true)
+        .single();
+
+      if (!difficulty) {
+        return failure(courseErrorCodes.difficultyNotFound, '유효한 난이도를 선택하세요');
+      }
+    }
+
+    // Build update object
+    const updateData: Record<string, any> = {};
+    if (request.title !== undefined) updateData.title = request.title;
+    if (request.description !== undefined) updateData.description = request.description;
+    if (request.categoryId !== undefined) updateData.category_id = request.categoryId;
+    if (request.difficultyId !== undefined) updateData.difficulty_id = request.difficultyId;
+    if (request.curriculum !== undefined) updateData.curriculum = request.curriculum;
+    updateData.updated_at = new Date().toISOString();
+
+    // Update course
+    const { error: updateError } = await client
+      .from('courses')
+      .update(updateData)
+      .eq('id', courseId);
+
+    if (updateError) {
+      return failure(courseErrorCodes.updateFailed, '코스 수정에 실패했습니다');
+    }
+
+    // Fetch updated course
+    return getCourseById(client, courseId, instructorId);
+  } catch (error) {
+    return failure(
+      courseErrorCodes.updateFailed,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
+  }
+}
+
+// ========================================
+// updateCourseStatus - 코스 상태 변경 (Instructor)
+// ========================================
+
+export async function updateCourseStatus(
+  client: SupabaseClient,
+  instructorId: string,
+  courseId: string,
+  request: UpdateCourseStatusRequest
+): Promise<Result<Course>> {
+  try {
+    // Check ownership
+    const { data: existingCourse } = await client
+      .from('courses')
+      .select('id, instructor_id, status')
+      .eq('id', courseId)
+      .single();
+
+    if (!existingCourse) {
+      return failure(courseErrorCodes.courseNotFound, '코스를 찾을 수 없습니다');
+    }
+
+    if (existingCourse.instructor_id !== instructorId) {
+      return failure(courseErrorCodes.forbidden, '권한이 없습니다');
+    }
+
+    // Optional: Validate draft -> published transition (requires at least 1 assignment)
+    // Uncomment if this business rule is needed
+    /*
+    if (existingCourse.status === 'draft' && request.status === 'published') {
+      const { count: assignmentCount } = await client
+        .from('assignments')
+        .select('*', { count: 'exact', head: true })
+        .eq('course_id', courseId);
+
+      if (assignmentCount === 0) {
+        return failure(
+          courseErrorCodes.invalidStatus,
+          '최소 1개의 과제를 추가한 후 공개하세요'
+        );
+      }
+    }
+    */
+
+    // Update status
+    const { error: updateError } = await client
+      .from('courses')
+      .update({
+        status: request.status,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', courseId);
+
+    if (updateError) {
+      return failure(courseErrorCodes.updateFailed, '코스 상태 변경에 실패했습니다');
+    }
+
+    // Fetch updated course
+    return getCourseById(client, courseId, instructorId);
+  } catch (error) {
+    return failure(
+      courseErrorCodes.updateFailed,
       error instanceof Error ? error.message : 'Unknown error'
     );
   }
