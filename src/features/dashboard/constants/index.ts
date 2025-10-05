@@ -9,6 +9,7 @@ export const DASHBOARD_CONSTANTS = {
 
 export const CACHE_KEYS = {
   DASHBOARD: 'dashboard',
+  INSTRUCTOR_DASHBOARD: 'instructor_dashboard',
 } as const;
 
 export const CACHE_TIME = {

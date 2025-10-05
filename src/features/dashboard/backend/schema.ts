@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+// ========== Learner Dashboard Schemas ==========
+
 // Progress info
 export const CourseProgressSchema = z.object({
   completed: z.number().int().min(0),
@@ -46,7 +48,7 @@ export const RecentFeedbackSchema = z.object({
 
 export type RecentFeedback = z.infer<typeof RecentFeedbackSchema>;
 
-// Dashboard response
+// Learner Dashboard response
 export const DashboardResponseSchema = z.object({
   courses: z.array(DashboardCourseSchema),
   upcomingAssignments: z.array(UpcomingAssignmentSchema),
@@ -54,3 +56,43 @@ export const DashboardResponseSchema = z.object({
 });
 
 export type DashboardResponse = z.infer<typeof DashboardResponseSchema>;
+
+// ========== Instructor Dashboard Schemas ==========
+
+// Course info for instructor
+export const InstructorCourseInfoSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  status: z.enum(['draft', 'published', 'archived']),
+  createdAt: z.string(),
+  enrollmentCount: z.number().int().min(0),
+  assignmentCount: z.number().int().min(0),
+  pendingGradingCount: z.number().int().min(0),
+});
+
+export type InstructorCourseInfo = z.infer<typeof InstructorCourseInfoSchema>;
+
+// Recent submission info
+export const InstructorRecentSubmissionSchema = z.object({
+  id: z.string().uuid(),
+  assignmentId: z.string().uuid(),
+  assignmentTitle: z.string(),
+  learnerName: z.string(),
+  submittedAt: z.string(),
+  status: z.enum(['submitted', 'graded', 'resubmission_required']),
+});
+
+export type InstructorRecentSubmission = z.infer<
+  typeof InstructorRecentSubmissionSchema
+>;
+
+// Instructor Dashboard response
+export const InstructorDashboardResponseSchema = z.object({
+  courses: z.array(InstructorCourseInfoSchema),
+  recentSubmissions: z.array(InstructorRecentSubmissionSchema),
+  totalPendingGrading: z.number().int().min(0),
+});
+
+export type InstructorDashboardResponse = z.infer<
+  typeof InstructorDashboardResponseSchema
+>;

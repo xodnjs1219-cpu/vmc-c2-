@@ -7,11 +7,16 @@ import {
   type DashboardCourse,
   type UpcomingAssignment,
   type RecentFeedback,
+  InstructorDashboardResponseSchema,
+  type InstructorDashboardResponse,
+  type InstructorCourseInfo,
+  type InstructorRecentSubmission,
 } from './schema';
 import { dashboardErrorCodes, type DashboardServiceError } from './error';
 
 const UPCOMING_DEADLINE_DAYS = 7;
 const MAX_RECENT_FEEDBACK = 5;
+const MAX_RECENT_SUBMISSIONS = 10;
 
 export const getDashboardData = async (
   client: SupabaseClient,
@@ -238,6 +243,171 @@ export const getDashboardData = async (
       500,
       dashboardErrorCodes.fetchFailed,
       '대시보드 데이터 조회 중 오류가 발생했습니다',
+      error,
+    );
+  }
+};
+
+export const getInstructorDashboard = async (
+  client: SupabaseClient,
+  userId: string,
+): Promise<
+  HandlerResult<InstructorDashboardResponse, DashboardServiceError, unknown>
+> => {
+  try {
+    // 1. Get instructor's courses with counts
+    const { data: coursesData, error: coursesError } = await client
+      .from('courses')
+      .select('id, title, status, created_at')
+      .eq('instructor_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (coursesError) {
+      return failure(
+        500,
+        dashboardErrorCodes.fetchFailed,
+        '코스 목록 조회에 실패했습니다',
+        coursesError,
+      );
+    }
+
+    const courseIds = coursesData?.map((c) => c.id) ?? [];
+    const courses: InstructorCourseInfo[] = [];
+
+    // 2. For each course, get enrollment, assignment, and pending grading counts
+    for (const course of coursesData ?? []) {
+      // Get enrollment count
+      const { count: enrollmentCount } = await client
+        .from('enrollments')
+        .select('*', { count: 'exact', head: true })
+        .eq('course_id', course.id);
+
+      // Get assignment count
+      const { count: assignmentCount } = await client
+        .from('assignments')
+        .select('*', { count: 'exact', head: true })
+        .eq('course_id', course.id);
+
+      // Get pending grading count (status='submitted')
+      const { data: assignmentsInCourse } = await client
+        .from('assignments')
+        .select('id')
+        .eq('course_id', course.id);
+
+      const assignmentIdsInCourse =
+        assignmentsInCourse?.map((a) => a.id) ?? [];
+
+      let pendingGradingCount = 0;
+      if (assignmentIdsInCourse.length > 0) {
+        const { count } = await client
+          .from('submissions')
+          .select('*', { count: 'exact', head: true })
+          .in('assignment_id', assignmentIdsInCourse)
+          .eq('status', 'submitted');
+
+        pendingGradingCount = count ?? 0;
+      }
+
+      courses.push({
+        id: course.id,
+        title: course.title,
+        status: course.status,
+        createdAt: course.created_at,
+        enrollmentCount: enrollmentCount ?? 0,
+        assignmentCount: assignmentCount ?? 0,
+        pendingGradingCount,
+      });
+    }
+
+    // 3. Get recent submissions (top 10)
+    const recentSubmissions: InstructorRecentSubmission[] = [];
+
+    if (courseIds.length > 0) {
+      const { data: submissionsData, error: submissionsError } = await client
+        .from('submissions')
+        .select(
+          `
+          id,
+          assignment_id,
+          learner_id,
+          submitted_at,
+          status,
+          assignments!inner(
+            title,
+            course_id
+          )
+        `,
+        )
+        .in('assignments.course_id', courseIds)
+        .order('submitted_at', { ascending: false })
+        .limit(MAX_RECENT_SUBMISSIONS);
+
+      if (submissionsError) {
+        return failure(
+          500,
+          dashboardErrorCodes.fetchFailed,
+          '최근 제출물 조회에 실패했습니다',
+          submissionsError,
+        );
+      }
+
+      // Get learner names
+      const learnerIds = [
+        ...new Set(submissionsData?.map((s: any) => s.learner_id) ?? []),
+      ];
+
+      const { data: profilesData } = await client
+        .from('profiles')
+        .select('id, name')
+        .in('id', learnerIds);
+
+      const profileMap = new Map<string, string>();
+      profilesData?.forEach((p: any) => {
+        profileMap.set(p.id, p.name);
+      });
+
+      submissionsData?.forEach((s: any) => {
+        recentSubmissions.push({
+          id: s.id,
+          assignmentId: s.assignment_id,
+          assignmentTitle: s.assignments.title,
+          learnerName: profileMap.get(s.learner_id) ?? '알 수 없음',
+          submittedAt: s.submitted_at,
+          status: s.status,
+        });
+      });
+    }
+
+    // 4. Calculate total pending grading count
+    const totalPendingGrading = courses.reduce(
+      (sum, c) => sum + c.pendingGradingCount,
+      0,
+    );
+
+    // 5. Validate and return
+    const response: InstructorDashboardResponse = {
+      courses,
+      recentSubmissions,
+      totalPendingGrading,
+    };
+
+    const parsed = InstructorDashboardResponseSchema.safeParse(response);
+
+    if (!parsed.success) {
+      return failure(
+        500,
+        dashboardErrorCodes.validationError,
+        '대시보드 데이터 검증에 실패했습니다',
+        parsed.error.format(),
+      );
+    }
+
+    return success(parsed.data);
+  } catch (error) {
+    return failure(
+      500,
+      dashboardErrorCodes.fetchFailed,
+      '강사 대시보드 조회 중 오류가 발생했습니다',
       error,
     );
   }
